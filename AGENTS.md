@@ -56,6 +56,7 @@ Jalankan command dari folder aplikasi terkait. Gunakan `bun` untuk frontend dan 
 - Utamakan perubahan minimal, sederhana, dan mudah dibaca; hindari abstraksi spekulatif.
 - Validasi semua input di server; gunakan query SQL berparameter.
 - Ikuti format idiomatik Go (`gofmt`) dan TypeScript/Next.js yang sudah ada.
+- Untuk logging backend Go, gunakan standard library `log/slog`
 - Propagasikan error; jangan abaikan error atau mengirim detail internal ke client.
 - Jangan pernah commit secret. Ambil konfigurasi dari environment.
 - Ubah kontrak API hanya jika PRD/SPEC dan seluruh pemanggil ikut diperbarui.
