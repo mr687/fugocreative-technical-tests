@@ -1,14 +1,14 @@
 package validation
 
 import (
-	"log/slog"
-	"reflect"
-	"strings"
-
 	"github.com/go-playground/locales/id"
 	ut "github.com/go-playground/universal-translator"
 	"github.com/go-playground/validator/v10"
 	idtranslations "github.com/go-playground/validator/v10/translations/id"
+	"log/slog"
+	"reflect"
+	"strings"
+	"time"
 )
 
 type FieldError struct {
@@ -69,6 +69,20 @@ func newValidator() *validator.Validate {
 		return translator.Add("notblank", "{0} tidak boleh kosong.", false)
 	}, func(translator ut.Translator, fieldErr validator.FieldError) string {
 		message, _ := translator.T("notblank", fieldErr.Field())
+		return message
+	}); err != nil {
+		panic(err)
+	}
+	if err := v.RegisterValidation("date_not_past", func(field validator.FieldLevel) bool {
+		date, err := time.Parse("2006-01-02", field.Field().String())
+		return err == nil && !date.Before(time.Now().UTC().Truncate(24*time.Hour))
+	}); err != nil {
+		panic(err)
+	}
+	if err := v.RegisterTranslation("date_not_past", translator, func(translator ut.Translator) error {
+		return translator.Add("date_not_past", "{0} tidak boleh sebelum hari ini.", false)
+	}, func(translator ut.Translator, fieldErr validator.FieldError) string {
+		message, _ := translator.T("date_not_past", fieldErr.Field())
 		return message
 	}); err != nil {
 		panic(err)

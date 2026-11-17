@@ -48,6 +48,10 @@ func run() error {
 	}
 	slog.Info("database migrations applied")
 
+	briefRepository := repository.NewBriefRepository(db)
+	briefService := service.NewBriefService(briefRepository)
+	briefHandler := handler.NewBriefHandler(briefService)
+
 	adminRepository := repository.NewAdminRepository(cfg.AdminUsername, cfg.AdminPassword)
 	authService := service.NewAuthService(adminRepository, cfg.JWTSecret, cfg.JWTTTL)
 	authHandler := handler.NewAuthHandler(authService)
@@ -56,6 +60,7 @@ func run() error {
 
 	router.Route("/api", func(r chi.Router) {
 		r.Mount(authHandler.Path(), authHandler.Start())
+		r.Mount(briefHandler.Path(), briefHandler.Start())
 	})
 
 	server := &http.Server{Addr: cfg.ServerAddr, Handler: router, ReadHeaderTimeout: 5 * time.Second}
