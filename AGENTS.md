@@ -23,6 +23,7 @@ backend/
 │   ├── model/               # Struct data & JSON Schema struct LLM
 │   ├── repository/          # Layer SQL query PostgreSQL
 │   └── service/             # Business logic & integrasi API LLM
+├── pkg/                     # Public package, helpers
 ├── migrations/              # File migrasi SQL (.sql)
 └── go.mod
 ```

@@ -13,6 +13,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/mr687/fugocreative-technical-tests/internal/config"
 	"github.com/mr687/fugocreative-technical-tests/internal/database"
+	"github.com/mr687/fugocreative-technical-tests/internal/handler"
+	"github.com/mr687/fugocreative-technical-tests/internal/repository"
+	"github.com/mr687/fugocreative-technical-tests/internal/service"
 )
 
 func main() {
@@ -45,7 +48,16 @@ func run() error {
 	}
 	slog.Info("database migrations applied")
 
+	adminRepository := repository.NewAdminRepository(cfg.AdminUsername, cfg.AdminPassword)
+	authService := service.NewAuthService(adminRepository, cfg.JWTSecret, cfg.JWTTTL)
+	authHandler := handler.NewAuthHandler(authService)
+
 	router := chi.NewRouter()
+
+	router.Route("/api", func(r chi.Router) {
+		r.Mount(authHandler.Path(), authHandler.Start())
+	})
+
 	server := &http.Server{Addr: cfg.ServerAddr, Handler: router, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
