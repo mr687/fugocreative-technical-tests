@@ -1,0 +1,79 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: fugocreative-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-fugocreative_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-fugocreative_db}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fugocreative-network
+
+  backend:
+    image: ghcr.io/mr687/fugocreative-technical-tests-backend:beta0
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fugocreative-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVER_ADDR=${SERVER_ADDR:-8080}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-fugocreative_db}?sslmode=disable
+      - ADMIN_USERNAME=${ADMIN_USERNAME:?ADMIN_USERNAME is required}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - JWT_TTL=${JWT_TTL:-1d}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
+      - LLM_MODEL=${LLM_MODEL:-openrouter/free}
+      - LLM_API_KEY=${LLM_API_KEY:?LLM_API_KEY is required}
+      - LLM_ENDPOINT=${LLM_ENDPOINT:-https://openrouter.ai/api/v1}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-30s}
+      - CORS_ALLOWED_ORIGIN=${CORS_ALLOWED_ORIGIN:-http://localhost:3000}
+    ports:
+      - 8080:8080
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - fugocreative-network
+
+  frontend:
+    image: ghcr.io/mr687/fugocreative-technical-tests-frontend:beta0
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fugocreative-frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_API_URL: http://backend:8080/api
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - fugocreative-network
+
+volumes:
+  postgres_data:
+
+networks:
+  fugocreative-network:
