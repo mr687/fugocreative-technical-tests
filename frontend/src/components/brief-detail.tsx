@@ -4,10 +4,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, LogOut, RefreshCw, RotateCcw } from "lucide-react";
+import { ArrowLeft, LogOut, RefreshCw, RotateCcw, WandSparkles } from "lucide-react";
+import { Dialog } from "@base-ui/react/dialog";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type AIResult = {
   summary: string;
@@ -16,6 +20,8 @@ type AIResult = {
   priority_reason: string;
   missing_info: string[];
 };
+
+type EmailDraft = { subject: string; body: string };
 
 type BriefDetailData = {
   id: string;
@@ -27,6 +33,7 @@ type BriefDetailData = {
   target_date: string;
   ai_status: string;
   ai_result: AIResult | null;
+  ai_email_draft: EmailDraft | null;
   pipeline_status: string;
   latest_job: { id: string; status: string; attempt: number; error: string | null } | null;
   created_at: string;
@@ -42,6 +49,10 @@ export function BriefDetail({ id, username }: { id: string; username: string }) 
   const [isLoading, setIsLoading] = useState(true);
   const [isRetrying, setIsRetrying] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isDraftDialogOpen, setIsDraftDialogOpen] = useState(false);
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
   const isProcessing = brief?.latest_job?.status === "processing";
 
   const handleUnauthorized = useCallback(async () => {
@@ -165,6 +176,50 @@ export function BriefDetail({ id, username }: { id: string; username: string }) 
   }
   const jobActive = brief?.latest_job?.status === "queued" || isProcessing;
 
+  function openEmailDraft() {
+    setEmailSubject(brief?.ai_email_draft?.subject ?? "");
+    setEmailBody(brief?.ai_email_draft?.body ?? "");
+    setIsDraftDialogOpen(true);
+  }
+
+  async function generateEmailDraft() {
+    setIsGeneratingDraft(true);
+    try {
+      const response = await fetch(`/api/admin/briefs/${encodeURIComponent(id)}/email-draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (response.status === 401) {
+        await handleUnauthorized();
+        return;
+      }
+      const payload = (await response.json().catch(() => null)) as ({ ai_email_draft?: EmailDraft } & APIError) | null;
+      const draft = payload?.ai_email_draft;
+      if (!response.ok || !draft || typeof draft.subject !== "string" || typeof draft.body !== "string") {
+        throw new Error(payload?.error?.message ?? "Draft email gagal dibuat.");
+      }
+      setEmailSubject(draft.subject);
+      setEmailBody(draft.body);
+      setBrief((current) => current ? { ...current, ai_email_draft: draft } : current);
+      toast.success("Draft email berhasil dibuat.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Draft email gagal dibuat.");
+    } finally {
+      setIsGeneratingDraft(false);
+    }
+  }
+
+  const canSendEmail = emailSubject.trim() !== "" && emailBody.trim() !== "";
+  const canGenerateEmailDraft = Boolean(
+    brief?.ai_result &&
+    brief.ai_result.summary.trim() &&
+    Array.isArray(brief.ai_result.missing_info),
+  );
+  const mailtoHref = brief
+    ? `mailto:${brief.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`
+    : undefined;
+
 
   return (
     <main className="min-h-screen bg-muted/35">
@@ -204,6 +259,73 @@ export function BriefDetail({ id, username }: { id: string; username: string }) 
               </div>
               <div className="flex items-center gap-2">
                 <StatusPill value={brief.ai_status} />
+                <Dialog.Root
+                  open={isDraftDialogOpen}
+                  onOpenChange={setIsDraftDialogOpen}
+                  triggerId="email-draft-trigger"
+                >
+                  <Button id="email-draft-trigger" variant="outline" onClick={openEmailDraft}>
+                    <WandSparkles className="mr-2 size-4" aria-hidden="true" />
+                    Draft Email
+                  </Button>
+                  <Dialog.Portal>
+                    <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/50" />
+                    <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 grid max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 gap-5 overflow-y-auto rounded-xl border bg-background p-6 shadow-lg">
+                      <header className="space-y-1">
+                        <Dialog.Title className="text-lg font-semibold">Draft Email</Dialog.Title>
+                        <Dialog.Description className="text-sm text-muted-foreground">
+                          Tinjau dan edit draft sebelum membuka aplikasi email.
+                        </Dialog.Description>
+                      </header>
+                      <div className="grid gap-4">
+                        <div className="grid gap-2">
+                          <Label htmlFor="draft-email-to">Email tujuan</Label>
+                          <Input id="draft-email-to" type="email" value={brief.email} disabled />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="draft-email-subject">Subject</Label>
+                          <Input
+                            id="draft-email-subject"
+                            value={emailSubject}
+                            onChange={(event) => setEmailSubject(event.target.value)}
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="draft-email-body">Body</Label>
+                          <Textarea
+                            id="draft-email-body"
+                            className="min-h-56 resize-y"
+                            value={emailBody}
+                            onChange={(event) => setEmailBody(event.target.value)}
+                          />
+                        </div>
+                        {!brief.ai_email_draft && !brief.ai_result ? (
+                          <p className="text-sm text-muted-foreground">Draft dapat dibuat setelah ringkasan AI dan informasi yang dibutuhkan tersedia.</p>
+                        ) : null}
+                      </div>
+                      <footer className="flex flex-wrap justify-end gap-2">
+                        <Button type="button" variant="outline" onClick={() => setIsDraftDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={generateEmailDraft}
+                          disabled={isGeneratingDraft || !canGenerateEmailDraft}
+                        >
+                          {isGeneratingDraft ? "Membuat draft..." : brief.ai_email_draft ? "Generate ulang" : "Generate"}
+                        </Button>
+                        <a
+                          className={buttonVariants({ className: canSendEmail ? "" : "pointer-events-none opacity-50" })}
+                          href={canSendEmail ? mailtoHref : undefined}
+                          aria-disabled={!canSendEmail}
+                        >
+                          Kirim
+                        </a>
+                      </footer>
+                    </Dialog.Popup>
+                  </Dialog.Portal>
+                </Dialog.Root>
                 <Button onClick={retryAI} disabled={isRetrying || jobActive}>
                   <RotateCcw className={`mr-2 size-4 ${isRetrying ? "animate-spin" : ""}`} aria-hidden="true" />
                   {isRetrying ? "Mengantrekan..." : "Retry LLM summary"}
