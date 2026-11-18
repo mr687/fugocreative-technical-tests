@@ -116,15 +116,15 @@ Success `200`:
 ```
 Error: `401 UNAUTHORIZED`.
 
-### `GET /api/admin/briefs?priority=&category=` — JWT
+### `GET /api/admin/briefs?page=&page_size=&priority=&category=` — JWT
 
-Request body: tidak ada. Query filter opsional; kategori/priority harus enum valid.
+Request body: tidak ada. `page` dan `page_size` opsional; default `1` dan `20`, maksimum `page_size` adalah `100`. Kategori/priority opsional dan harus enum valid.
 
 Success `200`:
 ```json
-{"items":[{"id":"019...","company_name":"Contoh Studio","service_category":"Website","priority":"Medium","ai_status":"succeeded","pipeline_status":"New","created_at":"2026-11-17T08:00:00Z"}]}
+{"items":[{"id":"019...","company_name":"Contoh Studio","service_category":"Website","priority":"Medium","ai_status":"succeeded","pipeline_status":"New","created_at":"2026-11-17T08:00:00Z"}],"page":1,"page_size":20,"total":42,"total_pages":3}
 ```
-Error: `400 INVALID_FILTER`, `401 UNAUTHORIZED`, `500 INTERNAL_ERROR`.
+Error: `400 INVALID_FILTER` untuk filter atau parameter pagination invalid, `401 UNAUTHORIZED`, `500 INTERNAL_ERROR`.
 
 ### `GET /api/admin/briefs/{id}` — JWT
 

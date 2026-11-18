@@ -54,6 +54,9 @@ func run() error {
 	aiWorker := worker.New(jobRepository, service.NewOpenAIProvider(cfg.LLMEndpoint, cfg.LLMModel, cfg.LLMAPIKey), cfg.LLMTimeout)
 	briefService := service.NewBriefService(briefRepository, aiWorker.Wake)
 	briefHandler := handler.NewBriefHandler(briefService)
+	adminBriefRepository := repository.NewAdminBriefRepository(db)
+	adminBriefService := service.NewAdminBriefService(adminBriefRepository, aiWorker.Wake)
+	adminBriefHandler := handler.NewAdminBriefHandler(adminBriefService, cfg.JWTSecret)
 	if err := aiWorker.Start(ctx); err != nil {
 		return err
 	}
@@ -67,6 +70,7 @@ func run() error {
 	router.Route("/api", func(r chi.Router) {
 		r.Mount(authHandler.Path(), authHandler.Start())
 		r.Mount(briefHandler.Path(), briefHandler.Start())
+		r.Mount(adminBriefHandler.Path(), adminBriefHandler.Start())
 	})
 
 	server := &http.Server{Addr: cfg.ServerAddr, Handler: router, ReadHeaderTimeout: 5 * time.Second}
