@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	ErrBriefNotFound    = errors.New("brief not found")
-	ErrJobAlreadyActive = errors.New("AI job already active")
+	ErrBriefNotFound     = errors.New("brief not found")
+	ErrJobAlreadyActive  = errors.New("AI job already active")
+	ErrAIContextNotReady = errors.New("AI context not ready")
 )
 
 type AdminBriefRepository interface {
@@ -21,6 +22,8 @@ type AdminBriefRepository interface {
 	Get(context.Context, string) (model.AdminBriefDetail, error)
 	Reprocess(context.Context, string) (string, error)
 	UpdatePipeline(context.Context, string, string) (model.UpdatePipelineResponse, error)
+	GetEmailDraftContext(context.Context, string) (model.EmailDraftContext, error)
+	SaveEmailDraft(context.Context, string, model.EmailDraft) error
 }
 
 type adminBriefRepository struct {
@@ -70,11 +73,12 @@ func (r *adminBriefRepository) List(ctx context.Context, priority, category stri
 func (r *adminBriefRepository) Get(ctx context.Context, id string) (model.AdminBriefDetail, error) {
 	var brief model.AdminBriefDetail
 	var aiResult []byte
+	var emailDraft []byte
 	var jobID, jobStatus, jobError sql.NullString
 	var attempt sql.NullInt64
 	err := r.db.QueryRowContext(ctx, `
 		SELECT b.id::text, b.contact_name, b.email, b.company_name, b.need_description,
-		       b.budget_range, b.target_date::text, b.ai_status, b.ai_result,
+		       b.budget_range, b.target_date::text, b.ai_status, b.ai_result, b.ai_email_draft,
 		       b.pipeline_status, b.created_at, b.updated_at,
 		       j.id::text, j.status, j.attempt, j.error
 		FROM briefs b
@@ -86,7 +90,7 @@ func (r *adminBriefRepository) Get(ctx context.Context, id string) (model.AdminB
 		WHERE b.id = $1`, id).Scan(
 		&brief.ID, &brief.ContactName, &brief.Email, &brief.CompanyName,
 		&brief.NeedDescription, &brief.BudgetRange, &brief.TargetDate, &brief.AIStatus,
-		&aiResult, &brief.PipelineStatus, &brief.CreatedAt, &brief.UpdatedAt,
+		&aiResult, &emailDraft, &brief.PipelineStatus, &brief.CreatedAt, &brief.UpdatedAt,
 		&jobID, &jobStatus, &attempt, &jobError,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -102,6 +106,13 @@ func (r *adminBriefRepository) Get(ctx context.Context, id string) (model.AdminB
 		}
 		brief.AIResult = &result
 	}
+	if len(emailDraft) > 0 {
+		var draft model.EmailDraft
+		if err := json.Unmarshal(emailDraft, &draft); err != nil {
+			return model.AdminBriefDetail{}, fmt.Errorf("decode brief email draft: %w", err)
+		}
+		brief.AIEmailDraft = &draft
+	}
 	if jobID.Valid {
 		job := &model.AdminAIJob{ID: jobID.String, Status: jobStatus.String, Attempt: int(attempt.Int64)}
 		if jobError.Valid {
@@ -110,6 +121,67 @@ func (r *adminBriefRepository) Get(ctx context.Context, id string) (model.AdminB
 		brief.LatestJob = job
 	}
 	return brief, nil
+}
+
+func (r *adminBriefRepository) GetEmailDraftContext(ctx context.Context, id string) (model.EmailDraftContext, error) {
+	var draftContext model.EmailDraftContext
+	var aiResult []byte
+	err := r.db.QueryRowContext(ctx, `
+		SELECT contact_name, company_name, need_description, ai_result
+		FROM briefs WHERE id = $1`, id).Scan(
+		&draftContext.ContactName, &draftContext.CompanyName, &draftContext.NeedDescription, &aiResult,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.EmailDraftContext{}, ErrBriefNotFound
+	}
+	if err != nil {
+		return model.EmailDraftContext{}, fmt.Errorf("get email draft context: %w", err)
+	}
+	if len(aiResult) == 0 {
+		return model.EmailDraftContext{}, ErrAIContextNotReady
+	}
+	var result model.AIResult
+	if err := json.Unmarshal(aiResult, &result); err != nil {
+		return model.EmailDraftContext{}, fmt.Errorf("decode email draft context: %w", err)
+	}
+	if result.Summary == "" || result.MissingInfo == nil {
+		return model.EmailDraftContext{}, ErrAIContextNotReady
+	}
+	draftContext.Summary = result.Summary
+	draftContext.MissingInfo = result.MissingInfo
+	return draftContext, nil
+}
+
+func (r *adminBriefRepository) SaveEmailDraft(ctx context.Context, id string, draft model.EmailDraft) error {
+	encodedDraft, err := json.Marshal(draft)
+	if err != nil {
+		return fmt.Errorf("encode brief email draft: %w", err)
+	}
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE briefs
+		SET ai_email_draft = $2::jsonb, updated_at = now()
+		WHERE id = $1
+		  AND ai_result ->> 'summary' IS NOT NULL
+		  AND btrim(ai_result ->> 'summary') <> ''
+		  AND jsonb_typeof(ai_result -> 'missing_info') = 'array'`, id, string(encodedDraft))
+	if err != nil {
+		return fmt.Errorf("save brief email draft: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check saved brief email draft: %w", err)
+	}
+	if rows == 1 {
+		return nil
+	}
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM briefs WHERE id = $1)`, id).Scan(&exists); err != nil {
+		return fmt.Errorf("check brief for email draft: %w", err)
+	}
+	if !exists {
+		return ErrBriefNotFound
+	}
+	return ErrAIContextNotReady
 }
 
 func (r *adminBriefRepository) Reprocess(ctx context.Context, briefID string) (string, error) {

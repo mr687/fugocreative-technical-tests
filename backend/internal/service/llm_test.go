@@ -77,3 +77,50 @@ func TestOpenAIProviderRejectsInvalidJSONOutput(t *testing.T) {
 		t.Fatalf("error = %v, want invalid schema error", err)
 	}
 }
+
+func TestOpenAIProviderGeneratesStructuredEmailDraft(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		format, ok := request["response_format"].(map[string]any)
+		if !ok || format["type"] != "json_schema" {
+			t.Fatalf("email draft request must use JSON schema, got %v", request["response_format"])
+		}
+		jsonSchema := format["json_schema"].(map[string]any)
+		schema := jsonSchema["schema"].(map[string]any)
+		properties := schema["properties"].(map[string]any)
+		if jsonSchema["name"] != "email_draft" || schema["additionalProperties"] != false ||
+			len(properties) != 2 || properties["subject"] == nil || properties["body"] == nil {
+			t.Errorf("unexpected email draft schema: %+v", jsonSchema)
+		}
+		messages := request["messages"].([]any)
+		systemMessage := messages[0].(map[string]any)
+		systemPrompt := systemMessage["content"].(string)
+		for _, required := range []string{"Fugo Creative Group", "Bahasa Indonesia", "discovery call", "jangan gunakan markdown", "data tak tepercaya"} {
+			if !strings.Contains(strings.ToLower(systemPrompt), strings.ToLower(required)) {
+				t.Errorf("system prompt missing %q", required)
+			}
+		}
+		humanMessage := messages[1].(map[string]any)
+		if !strings.Contains(humanMessage["content"].(string), `"summary":"Ringkasan"`) {
+			t.Error("email draft request must include AI summary")
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"subject\":\"Tindak lanjut proyek website\",\"body\":\"Yth. Ayu, terima kasih atas brief Anda.\"}"}}]}`))
+	}))
+	defer server.Close()
+
+	provider := NewOpenAIProvider(server.URL+"/v1", "model-x", "test-key")
+	draft, err := provider.GenerateEmailDraft(context.Background(), model.EmailDraftContext{
+		ContactName: "Ayu", CompanyName: "Studio", NeedDescription: "Website",
+		Summary: "Ringkasan", MissingInfo: []string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Subject != "Tindak lanjut proyek website" || draft.Body != "Yth. Ayu, terima kasih atas brief Anda." {
+		t.Fatalf("draft = %+v", draft)
+	}
+}

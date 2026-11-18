@@ -38,6 +38,7 @@ func (h *adminBriefHandler) Start() chi.Router {
 	router.Get("/", h.List)
 	router.Get("/{id}", h.Get)
 	router.Post("/{id}/reprocess", h.Reprocess)
+	router.Post("/{id}/email-draft", h.GenerateEmailDraft)
 	router.Patch("/{id}/pipeline", h.UpdatePipeline)
 	return router
 }
@@ -106,6 +107,28 @@ func (h *adminBriefHandler) Reprocess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.Success(w, http.StatusAccepted, result)
+}
+
+func (h *adminBriefHandler) GenerateEmailDraft(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validUUID(id) {
+		adminBriefNotFound(w)
+		return
+	}
+	result, err := h.service.GenerateEmailDraft(r.Context(), id)
+	switch {
+	case errors.Is(err, service.ErrBriefNotFound):
+		adminBriefNotFound(w)
+	case errors.Is(err, service.ErrAIContextNotReady):
+		response.Error(w, http.StatusConflict, response.CodeAIContextNotReady, "Hasil AI belum lengkap untuk membuat draft email.", nil)
+	case errors.Is(err, service.ErrEmailDraftFailed):
+		response.Error(w, http.StatusBadGateway, response.CodeLLMGenerationFailed, "Draft email gagal dibuat. Coba lagi.", nil)
+	case err != nil:
+		slog.Error("generate admin brief email draft failed")
+		response.Error(w, http.StatusInternalServerError, response.CodeInternalError, "Terjadi kesalahan pada server.", nil)
+	default:
+		response.Success(w, http.StatusOK, result)
+	}
 }
 
 func (h *adminBriefHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request) {

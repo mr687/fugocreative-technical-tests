@@ -22,6 +22,7 @@ type adminBriefServiceStub struct {
 	list      func(context.Context, string, string, int, int) (model.AdminBriefListResponse, error)
 	get       func(context.Context, string) (model.AdminBriefDetail, error)
 	reprocess func(context.Context, string) (model.ReprocessBriefResponse, error)
+	draft     func(context.Context, string) (model.GenerateEmailDraftResponse, error)
 	pipeline  func(context.Context, string, string) (model.UpdatePipelineResponse, error)
 }
 
@@ -33,6 +34,10 @@ func (s adminBriefServiceStub) Get(ctx context.Context, id string) (model.AdminB
 }
 func (s adminBriefServiceStub) Reprocess(ctx context.Context, id string) (model.ReprocessBriefResponse, error) {
 	return s.reprocess(ctx, id)
+}
+
+func (s adminBriefServiceStub) GenerateEmailDraft(ctx context.Context, id string) (model.GenerateEmailDraftResponse, error) {
+	return s.draft(ctx, id)
 }
 func (s adminBriefServiceStub) UpdatePipeline(ctx context.Context, id, status string) (model.UpdatePipelineResponse, error) {
 	return s.pipeline(ctx, id, status)
@@ -47,6 +52,9 @@ func TestAdminBriefRoutesRequireJWT(t *testing.T) {
 		reprocess: func(context.Context, string) (model.ReprocessBriefResponse, error) {
 			return model.ReprocessBriefResponse{}, nil
 		},
+		draft: func(context.Context, string) (model.GenerateEmailDraftResponse, error) {
+			return model.GenerateEmailDraftResponse{}, nil
+		},
 		pipeline: func(context.Context, string, string) (model.UpdatePipelineResponse, error) {
 			return model.UpdatePipelineResponse{}, nil
 		},
@@ -59,6 +67,7 @@ func TestAdminBriefRoutesRequireJWT(t *testing.T) {
 		{http.MethodGet, "/api/admin/briefs", ""},
 		{http.MethodGet, "/api/admin/briefs/" + adminTestBriefID, ""},
 		{http.MethodPost, "/api/admin/briefs/" + adminTestBriefID + "/reprocess", `{}`},
+		{http.MethodPost, "/api/admin/briefs/" + adminTestBriefID + "/email-draft", `{}`},
 		{http.MethodPatch, "/api/admin/briefs/" + adminTestBriefID + "/pipeline", `{"pipeline_status":"Won"}`},
 	} {
 		request := httptest.NewRequest(test.method, test.path, strings.NewReader(test.body))
@@ -89,6 +98,9 @@ func TestAdminBriefHandlers(t *testing.T) {
 		},
 		reprocess: func(_ context.Context, id string) (model.ReprocessBriefResponse, error) {
 			return model.ReprocessBriefResponse{JobID: "01900000-0000-7000-8000-000000000001", AIStatus: "pending", JobStatus: "queued"}, nil
+		},
+		draft: func(_ context.Context, id string) (model.GenerateEmailDraftResponse, error) {
+			return model.GenerateEmailDraftResponse{ID: id, AIEmailDraft: model.EmailDraft{Subject: "Tindak lanjut", Body: "Yth. klien"}}, nil
 		},
 		pipeline: func(_ context.Context, id, status string) (model.UpdatePipelineResponse, error) {
 			gotPipeline = status
@@ -147,6 +159,13 @@ func TestAdminBriefHandlers(t *testing.T) {
 	t.Run("reprocesses and returns accepted", func(t *testing.T) {
 		response := adminRequest(router, token, http.MethodPost, "/api/admin/briefs/"+adminTestBriefID+"/reprocess", `{}`)
 		if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"job_status":"queued"`) {
+			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+		}
+	})
+	t.Run("generates and returns email draft", func(t *testing.T) {
+		response := adminRequest(router, token, http.MethodPost, "/api/admin/briefs/"+adminTestBriefID+"/email-draft", `{}`)
+		if response.Code != http.StatusOK ||
+			!strings.Contains(response.Body.String(), `"ai_email_draft":{"subject":"Tindak lanjut","body":"Yth. klien"}`) {
 			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 		}
 	})

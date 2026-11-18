@@ -30,6 +30,7 @@ type AdminBriefDetail struct {
 	TargetDate      string      `json:"target_date"`
 	AIStatus        string      `json:"ai_status"`
 	AIResult        *AIResult   `json:"ai_result"`
+	AIEmailDraft    *EmailDraft `json:"ai_email_draft"`
 	PipelineStatus  string      `json:"pipeline_status"`
 	LatestJob       *AdminAIJob `json:"latest_job"`
 	CreatedAt       time.Time   `json:"created_at"`
@@ -57,4 +58,22 @@ type UpdatePipelineResponse struct {
 	ID             string    `json:"id"`
 	PipelineStatus string    `json:"pipeline_status"`
 	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type GenerateEmailDraftResponse struct {
+	ID           string     `json:"id"`
+	AIEmailDraft EmailDraft `json:"ai_email_draft"`
+}
+
+type EmailDraft struct {
+	Subject string `json:"subject"`
+	Body    string `json:"body"`
+}
+
+type EmailDraftContext struct {
+	ContactName     string   `json:"contact_name"`
+	CompanyName     string   `json:"company_name"`
+	NeedDescription string   `json:"need_description"`
+	Summary         string   `json:"summary"`
+	MissingInfo     []string `json:"missing_info"`
 }

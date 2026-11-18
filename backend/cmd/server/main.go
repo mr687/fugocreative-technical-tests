@@ -51,11 +51,12 @@ func run() error {
 
 	briefRepository := repository.NewBriefRepository(db)
 	jobRepository := repository.NewAIJobRepository(db)
-	aiWorker := worker.New(jobRepository, service.NewOpenAIProvider(cfg.LLMEndpoint, cfg.LLMModel, cfg.LLMAPIKey), cfg.LLMTimeout)
+	llmProvider := service.NewOpenAIProvider(cfg.LLMEndpoint, cfg.LLMModel, cfg.LLMAPIKey)
+	aiWorker := worker.New(jobRepository, llmProvider, cfg.LLMTimeout)
 	briefService := service.NewBriefService(briefRepository, aiWorker.Wake)
 	briefHandler := handler.NewBriefHandler(briefService)
 	adminBriefRepository := repository.NewAdminBriefRepository(db)
-	adminBriefService := service.NewAdminBriefService(adminBriefRepository, aiWorker.Wake)
+	adminBriefService := service.NewAdminBriefService(adminBriefRepository, aiWorker.Wake, llmProvider, cfg.LLMTimeout)
 	adminBriefHandler := handler.NewAdminBriefHandler(adminBriefService, cfg.JWTSecret)
 	if err := aiWorker.Start(ctx); err != nil {
 		return err

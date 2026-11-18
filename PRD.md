@@ -25,9 +25,11 @@ Brief masuk melalui email/WhatsApp tersebar dan harus dibaca satu per satu. Sale
 - Deployment publik dan README yang memungkinkan reviewer mencoba aplikasi.
 
 ### Bukan tujuan MVP
-- Integrasi inbox email/WhatsApp, multi-user/role, queue eksternal, notifikasi, analytics, ekspor, draft email AI.
+- Integrasi inbox email/WhatsApp, multi-user/role, queue eksternal, notifikasi, analytics, ekspor.
 - CRM penuh, pengeditan/penghapusan brief, atau workflow pipeline kustom.
 - Jaminan AI selalu benar; hasil AI adalah rekomendasi untuk ditinjau manusia.
+
+**Perluasan lingkup:** draft email AI on-demand oleh admin termasuk fitur MVP; draft hanya disimpan sebagai bahan review dan tidak dikirim otomatis.
 
 ## 4. Pengguna dan akses
 
@@ -47,7 +49,7 @@ Satu akun admin dikonfigurasi melalui environment variables (username dan passwo
 5. Klien menerima konfirmasi bahwa brief diterima; jangan tampilkan error provider atau data internal.
 6. Admin login, melihat daftar terbaru, memfilter kategori/prioritas, dan membuka detail.
 7. Admin dapat mengubah pipeline dan meminta pemrosesan ulang AI pada brief.
-
+8. Setelah hasil AI tersedia, admin dapat meminta draft email tindak lanjut; draft disimpan untuk ditinjau dan dikirim manual di luar aplikasi.
 **Trade-off MVP:** worker goroutine sederhana menghindari infrastruktur queue eksternal. PostgreSQL menjadi sumber job yang durable; pada startup worker mengambil kembali job `queued` dan job `processing` yang ditinggalkan proses sebelumnya. Worker harus membatasi concurrency dan memakai timeout.
 
 ## 6. Kebutuhan fungsional
@@ -96,6 +98,8 @@ Kriteria:
 - Urutan terbaru dahulu.
 - Filter kategori dan prioritas; filter dapat dikombinasikan. URL/query state boleh digunakan bila implementasinya sederhana.
 - Detail menampilkan seluruh data form, hasil AI, status pemrosesan dan pipeline, serta retry AI.
+- Admin dapat meminta draft email tindak lanjut hanya jika `ai_summary` dan `ai_missing_info` tersedia. Draft dihasilkan berdasarkan nama kontak, nama perusahaan, kebutuhan proyek, ringkasan AI, dan informasi yang masih kurang; admin meninjau dan mengirimnya secara manual di luar aplikasi.
+- Draft disimpan pada `briefs.ai_email_draft`; generate ulang mengganti draft sebelumnya. Tidak ada pengiriman email otomatis.
 - Pipeline: `New → Contacted → Proposal → Won` atau `Lost`. Validasi enum di backend; MVP dapat mengizinkan transisi langsung antar-status agar sales tidak terhambat.
 - Status sukses/gagal terlihat jelas; aksi mutasi memberi feedback.
 
@@ -115,6 +119,7 @@ Kriteria:
 - `ai_status`: enum/constraint `pending | succeeded | failed`.
 - `ai_result`: JSONB nullable; hanya diisi setelah validasi.
 - `ai_error`: teks nullable, pesan aman/non-rahasia.
+- `ai_email_draft`: JSONB nullable berisi objek `subject` dan `body`, dibuat atas permintaan admin.
 - `pipeline_status`: enum/constraint `New | Contacted | Proposal | Won | Lost`, default `New`.
 - `created_at`, `updated_at`: timestamp dengan zona waktu.
 
@@ -144,6 +149,7 @@ Prefix `/api` (kontrak JSON konsisten, tanggal ISO-8601/date, error `{ "error": 
 | `GET /api/admin/briefs?priority=&category=` | JWT | Daftar terbaru dan filter |
 | `GET /api/admin/briefs/{id}` | JWT | Detail brief dan status job |
 | `POST /api/admin/briefs/{id}/reprocess` | JWT | Buat job retry jika tidak ada job aktif |
+| `POST /api/admin/briefs/{id}/email-draft` | JWT | Generate dan simpan draft jika ringkasan AI dan informasi yang kurang tersedia |
 | `PATCH /api/admin/briefs/{id}/pipeline` | JWT | Perbarui status pipeline |
 
 Kode status harus membedakan input invalid, tidak terautentikasi/token tidak valid, tidak ditemukan, konflik bila job aktif sudah ada, dan kegagalan server. JWT ditransmisikan melalui `Authorization: Bearer`; autentikasi ditegakkan di backend.
@@ -178,9 +184,10 @@ Jangan menambahkan dashboard analytics atau visualisasi sebelum alur wajib stabi
 5. Retry admin membuat job yang dapat diproses worker dan memperbarui status/hasil.
 6. Pengunjung tanpa JWT valid tidak dapat membaca/mengubah dashboard atau memanggil endpoint admin.
 7. Admin dapat melihat daftar terbaru, memfilter prioritas/kategori, membuka detail, dan mengubah pipeline.
-8. Semua status pipeline yang diizinkan tersimpan dan terlihat setelah reload.
-9. Aplikasi dapat dijalankan lokal mengikuti README dan tersedia di URL publik.
-10. Tidak ada API key/password/JWT secret dalam repository atau frontend bundle.
+8. Admin dapat generate draft email hanya untuk brief yang memiliki ringkasan dan informasi kurang AI; draft tersimpan dan tidak dikirim otomatis.
+9. Semua status pipeline yang diizinkan tersimpan dan terlihat setelah reload.
+10. Aplikasi dapat dijalankan lokal mengikuti README dan tersedia di URL publik.
+11. Tidak ada API key/password/JWT secret dalam repository atau frontend bundle.
 
 ## 12. Prioritas implementasi
 
@@ -200,7 +207,7 @@ Jangan menambahkan dashboard analytics atau visualisasi sebelum alur wajib stabi
 - Docker Compose untuk menjalankan app/database lokal.
 
 ### P2 — tidak dikerjakan kecuali semua di atas selesai
-- Draft email AI, queue eksternal, multi-admin, analytics, integrasi kanal.
+- Queue eksternal, multi-admin, analytics, integrasi kanal.
 
 ## 13. Keputusan teknis dan trade-off
 
