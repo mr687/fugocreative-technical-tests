@@ -10,3 +10,8 @@ type LoginResponse struct {
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int64  `json:"expires_in"`
 }
+
+type AuthMeResponse struct {
+	Authenticated bool   `json:"authenticated"`
+	Username      string `json:"username"`
+}

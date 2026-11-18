@@ -60,7 +60,7 @@ func run() error {
 
 	adminRepository := repository.NewAdminRepository(cfg.AdminUsername, cfg.AdminPassword)
 	authService := service.NewAuthService(adminRepository, cfg.JWTSecret, cfg.JWTTTL)
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, cfg.JWTSecret)
 
 	router := chi.NewRouter()
 

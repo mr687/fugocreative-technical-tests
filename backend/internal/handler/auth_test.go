@@ -19,7 +19,8 @@ func TestAdminLogin(t *testing.T) {
 	const secret = "01234567890123456789012345678901"
 	router := chi.NewRouter()
 	authService := service.NewAuthService(repository.NewAdminRepository("admin", "correct-password"), secret, time.Hour)
-	NewAuthHandler(authService).RegisterRoutes(router)
+	authHandler := NewAuthHandler(authService, secret)
+	router.Mount("/api"+authHandler.Path(), authHandler.Start())
 
 	t.Run("issues bearer token for valid credentials", func(t *testing.T) {
 		response := postLogin(router, `{"username":"admin","password":"correct-password"}`)
@@ -40,6 +41,58 @@ func TestAdminLogin(t *testing.T) {
 		}
 	})
 
+	t.Run("returns authenticated identity for a valid token", func(t *testing.T) {
+		login := postLogin(router, `{"username":"admin","password":"correct-password"}`)
+		var token model.LoginResponse
+		if err := json.NewDecoder(login.Body).Decode(&token); err != nil {
+			t.Fatal(err)
+		}
+		response := getMe(router, token.AccessToken)
+		var identity model.AuthMeResponse
+		if err := json.NewDecoder(response.Body).Decode(&identity); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != http.StatusOK || !identity.Authenticated || identity.Username != "admin" {
+			t.Fatalf("unexpected me response: status=%d identity=%+v", response.Code, identity)
+		}
+	})
+
+	t.Run("rejects missing and expired bearer tokens", func(t *testing.T) {
+		if response := getMe(router, ""); response.Code != http.StatusUnauthorized {
+			t.Fatalf("missing token status = %d, want 401", response.Code)
+		}
+		expired, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+			Issuer: "fugocreative", Subject: "admin",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
+		}).SignedString([]byte(secret))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response := getMe(router, expired); response.Code != http.StatusUnauthorized {
+			t.Fatalf("expired token status = %d, want 401", response.Code)
+		}
+	})
+
+	t.Run("rejects invalid signatures and non-allowlisted algorithms", func(t *testing.T) {
+		claims := jwt.RegisteredClaims{
+			Issuer: "fugocreative", Subject: "admin",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		}
+		wrongSignature, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("another-secret-that-does-not-match"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		wrongAlgorithm, err := jwt.NewWithClaims(jwt.SigningMethodHS384, claims).SignedString([]byte(secret))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, token := range []string{wrongSignature, wrongAlgorithm} {
+			if response := getMe(router, token); response.Code != http.StatusUnauthorized {
+				t.Fatalf("invalid JWT status = %d, want 401", response.Code)
+			}
+		}
+	})
+
 	t.Run("rejects invalid credentials generically", func(t *testing.T) {
 		response := postLogin(router, `{"username":"admin","password":"wrong"}`)
 		if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), "INVALID_CREDENTIALS") || strings.Contains(response.Body.String(), "wrong") {
@@ -57,6 +110,15 @@ func TestAdminLogin(t *testing.T) {
 
 func postLogin(handler http.Handler, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+func getMe(handler http.Handler, token string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	if token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
