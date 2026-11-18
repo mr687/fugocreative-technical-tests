@@ -11,9 +11,12 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/mr687/fugocreative-technical-tests/internal/config"
 	"github.com/mr687/fugocreative-technical-tests/internal/database"
 	"github.com/mr687/fugocreative-technical-tests/internal/handler"
+	"github.com/mr687/fugocreative-technical-tests/internal/middleware"
 	"github.com/mr687/fugocreative-technical-tests/internal/repository"
 	"github.com/mr687/fugocreative-technical-tests/internal/service"
 	"github.com/mr687/fugocreative-technical-tests/internal/worker"
@@ -67,6 +70,22 @@ func run() error {
 	authHandler := handler.NewAuthHandler(authService, cfg.JWTSecret)
 
 	router := chi.NewRouter()
+	router.Use(middleware.Logger("/ping"))
+	router.Use(chimiddleware.Recoverer)
+	router.Use(chimiddleware.AllowContentType(
+		"application/json",
+	))
+	router.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{cfg.CORSAllowedOrigin},
+		AllowedMethods:   []string{"HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowedHeaders:   []string{"*"},
+		ExposedHeaders:   []string{"*"},
+		AllowCredentials: true,
+	}))
+	router.Use(chimiddleware.ClientIPFromHeader("CF-Connecting-IP"))
+	router.Use(chimiddleware.CleanPath)
+	router.Use(chimiddleware.Timeout(200 * time.Second))
+	router.Use(chimiddleware.Heartbeat("/ping"))
 
 	router.Route("/api", func(r chi.Router) {
 		r.Mount(authHandler.Path(), authHandler.Start())
