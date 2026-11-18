@@ -5,11 +5,14 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#f4f6f8]">
       <header className="border-b border-slate-200/80 bg-white">
-        <div className="mx-auto flex h-16 max-w-6xl items-center px-5 sm:px-8">
-          <Link aria-label="Fugo Creative home" className="text-lg font-bold tracking-tight text-slate-950" href="/">
-            fugo<span className="text-indigo-600">.</span>
-          </Link>
-          <span className="ml-3 border-l border-slate-200 pl-3 text-sm text-slate-500">Creative studio</span>
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
+          <div className="flex items-center gap-3">
+            <Link aria-label="Fugo Creative home" className="text-lg font-bold tracking-tight text-slate-950" href="/">
+              Fugo<span className="text-indigo-600">.</span>
+            </Link>
+            <span className="border-l border-slate-200 pl-3 text-sm text-slate-500">Creative Studio</span>
+          </div>
+          <Link className="text-sm font-medium text-slate-600 hover:text-slate-950" href="/login">Login Admin</Link>
         </div>
       </header>
       <div className="mx-auto grid max-w-6xl gap-10 px-5 py-10 sm:px-8 sm:py-16 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
