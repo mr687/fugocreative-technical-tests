@@ -16,6 +16,7 @@ import (
 	"github.com/mr687/fugocreative-technical-tests/internal/handler"
 	"github.com/mr687/fugocreative-technical-tests/internal/repository"
 	"github.com/mr687/fugocreative-technical-tests/internal/service"
+	"github.com/mr687/fugocreative-technical-tests/internal/worker"
 )
 
 func main() {
@@ -49,8 +50,13 @@ func run() error {
 	slog.Info("database migrations applied")
 
 	briefRepository := repository.NewBriefRepository(db)
-	briefService := service.NewBriefService(briefRepository)
+	jobRepository := repository.NewAIJobRepository(db)
+	aiWorker := worker.New(jobRepository, service.NewOpenAIProvider(cfg.LLMEndpoint, cfg.LLMModel, cfg.LLMAPIKey), cfg.LLMTimeout)
+	briefService := service.NewBriefService(briefRepository, aiWorker.Wake)
 	briefHandler := handler.NewBriefHandler(briefService)
+	if err := aiWorker.Start(ctx); err != nil {
+		return err
+	}
 
 	adminRepository := repository.NewAdminRepository(cfg.AdminUsername, cfg.AdminPassword)
 	authService := service.NewAuthService(adminRepository, cfg.JWTSecret, cfg.JWTTTL)

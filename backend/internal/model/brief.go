@@ -19,10 +19,24 @@ type CreateBriefResponse struct {
 }
 
 type Brief struct {
-	ContactName     string
-	Email           string
-	CompanyName     string
-	NeedDescription string
-	BudgetRange     string
-	TargetDate      time.Time
+	ContactName     string    `json:"contact_name"`
+	Email           string    `json:"email"`
+	CompanyName     string    `json:"company_name"`
+	NeedDescription string    `json:"need_description"`
+	BudgetRange     string    `json:"budget_range"`
+	TargetDate      time.Time `json:"target_date"`
+}
+
+type AIResult struct {
+	Summary         string   `json:"summary"`
+	ServiceCategory string   `json:"service_category"`
+	Priority        string   `json:"priority"`
+	PriorityReason  string   `json:"priority_reason"`
+	MissingInfo     []string `json:"missing_info"`
+}
+
+type AIJob struct {
+	ID      string
+	BriefID string
+	Brief   Brief
 }

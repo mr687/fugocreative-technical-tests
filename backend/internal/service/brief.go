@@ -15,10 +15,15 @@ type BriefService interface {
 
 type briefService struct {
 	repository repository.BriefRepository
+	notify     func()
 }
 
-func NewBriefService(briefRepository repository.BriefRepository) BriefService {
-	return &briefService{repository: briefRepository}
+func NewBriefService(briefRepository repository.BriefRepository, notify ...func()) BriefService {
+	service := &briefService{repository: briefRepository}
+	if len(notify) > 0 {
+		service.notify = notify[0]
+	}
+	return service
 }
 
 func (s *briefService) Create(ctx context.Context, request model.CreateBriefRequest) (model.CreateBriefResponse, error) {
@@ -37,6 +42,9 @@ func (s *briefService) Create(ctx context.Context, request model.CreateBriefRequ
 	id, err := s.repository.Create(ctx, brief)
 	if err != nil {
 		return model.CreateBriefResponse{}, err
+	}
+	if s.notify != nil {
+		s.notify()
 	}
 	return model.CreateBriefResponse{ID: id, AIStatus: "pending", JobStatus: "queued", Message: "Brief berhasil dikirim"}, nil
 }
