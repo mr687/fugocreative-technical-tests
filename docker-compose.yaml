@@ -33,7 +33,7 @@ services:
     env_file:
       - .env
     environment:
-      - SERVER_ADDR=${SERVER_ADDR:-8080}
+      - SERVER_ADDR=${SERVER_ADDR:-:8080}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-fugocreative_db}?sslmode=disable
       - ADMIN_USERNAME=${ADMIN_USERNAME:?ADMIN_USERNAME is required}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
